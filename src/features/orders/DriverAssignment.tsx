@@ -15,22 +15,26 @@ export function DriverAssignment({ branchId, value, onChange, disabled }: Props)
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+
+    const load = async () => {
       setLoading(true);
+      // Fetch all active drivers in the branch, then keep anyone who is
+      // available OR is the currently-assigned driver for this order.
       const { data, error } = await supabase
         .from('profiles')
         .select('id,user_id,email,full_name,phone,role,branch_id,driver_status,is_active')
         .eq('branch_id', branchId)
         .eq('role', 'driver')
         .eq('is_active', true)
-        .eq('driver_status', 'available')
         .order('full_name');
       if (cancelled) return;
-      setDrivers(error ? [] : (data as Profile[]) ?? []);
+      const all = error ? [] : ((data as Profile[]) ?? []);
+      setDrivers(all.filter((d) => d.driver_status === 'available' || d.id === value));
       setLoading(false);
-    })();
+    };
 
-    // Live-refresh availability when a driver finishes a delivery elsewhere.
+    void load();
+
     const channel = supabase
       .channel(`drivers-avail-${branchId}`)
       .on(
@@ -41,14 +45,17 @@ export function DriverAssignment({ branchId, value, onChange, disabled }: Props)
           if (p.role !== 'driver') return;
           setDrivers((prev) => {
             const without = prev.filter((d) => d.id !== p.id);
-            return p.driver_status === 'available' && p.is_active ? [...without, p] : without;
+            const keep = p.driver_status === 'available' && p.is_active;
+            // Always keep the currently-selected driver visible.
+            if (keep || p.id === value) return [...without, p];
+            return without;
           });
         },
       )
       .subscribe();
 
     return () => { cancelled = true; supabase.removeChannel(channel); };
-  }, [branchId]);
+  }, [branchId, value]);
 
   return (
     <div className="space-y-1">
@@ -65,10 +72,11 @@ export function DriverAssignment({ branchId, value, onChange, disabled }: Props)
         {drivers.map((d) => (
           <option key={d.id} value={d.id}>
             {d.full_name || d.email}
+            {d.id === value && d.driver_status !== 'available' ? ' (currently assigned)' : ''}
           </option>
         ))}
       </select>
-      {!loading && drivers.length === 0 && (
+      {!loading && drivers.filter((d) => d.driver_status === 'available').length === 0 && (
         <p className="text-xs text-amber-600">No available drivers in this branch.</p>
       )}
     </div>
