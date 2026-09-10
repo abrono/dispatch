@@ -1,3 +1,4 @@
+// src/features/dashboard/MasterDashboard.tsx
 import { useState } from 'react';
 import { useProfile } from '../../lib/hooks/useProfile';
 import { useRealtimeOrders } from '../../lib/realtime/useRealtimeOrders';
@@ -12,7 +13,7 @@ function MasterGlobalView({
   branchId: string | null;
   setBranchId: (id: string | null) => void;
 }) {
-  const { orders } = useRealtimeOrders(null);   // always "all branches" here
+  const { orders } = useRealtimeOrders(null);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-4">
