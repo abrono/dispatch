@@ -44,43 +44,28 @@ export function OrderComposer({ onCreated }: { onCreated?: (orderId: string) => 
     if (!deliveryAddress.trim()) return setErr('Delivery address is required.');
 
     setSaving(true);
-    // Insert order + items atomically via a small transaction isn't directly
-    // exposed to the JS client, so we insert the order, then its items, and
-    // delete the order if the item insert fails.
-    const { data: order, error: orderErr } = await supabase
-      .from('orders')
-      .insert({
-        branch_id: branchId,
-        customer_id: customer.id,
-        assigned_driver_id: driverId,
-        delivery_address: deliveryAddress.trim(),
-        dispatch_cost: dispatchCost ? Number(dispatchCost) : null,
-        // status defaults to 'pending'; tracking_code defaults in the DB.
-      })
-      .select('id,tracking_code')
-      .single();
 
-    if (orderErr || !order) { setSaving(false); return setErr(orderErr?.message ?? 'Order insert failed'); }
-
-    const { error: itemErr } = await supabase.from('order_items').insert(
-      items.map((li) => ({
-        order_id: order.id,
+    // Single atomic RPC. Prices are read from products server-side; the
+    // client only sends product_id + quantity.
+    const { data, error } = await supabase.rpc('create_order_with_items', {
+      p_customer_id: customer.id,
+      p_delivery_address: deliveryAddress.trim(),
+      p_dispatch_cost: dispatchCost ? Number(dispatchCost) : null,
+      p_assigned_driver_id: driverId,
+      p_items: items.map((li) => ({
         product_id: li.product.id,
-        product_name: li.product.name,
         quantity: li.quantity,
-        price: li.product.price,          // historical snapshot
       })),
-    );
-
-    if (itemErr) {
-      await supabase.from('orders').delete().eq('id', order.id);
-      setSaving(false);
-      return setErr(itemErr.message);
-    }
+      p_branch_id: profile.role === 'master' ? branchId : null,
+    });
 
     setSaving(false);
-    onCreated?.(order.id);
-    // reset
+
+    if (error) { return setErr(error.message); }
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row?.id) return setErr('Order creation returned no id');
+
+    onCreated?.(row.id);
     setCustomer(null); setItems([]); setDriverId(null);
     setDeliveryAddress(''); setDispatchCost('');
   }
