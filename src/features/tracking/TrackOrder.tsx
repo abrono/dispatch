@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import { Package, MapPin, Truck, Clock } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
@@ -34,8 +35,7 @@ export function TrackOrder() {
       const { data, error } = await supabase.rpc('track_order', { p_tracking_code: tracking_code });
       if (cancelled) return;
       setLoading(false);
-      if (error) { setNotFound(true); return; }
-      if (!data) { setNotFound(true); return; }
+      if (error || !data) { setNotFound(true); return; }
       setData(data as TrackingPayload);
     };
 
@@ -60,7 +60,7 @@ export function TrackOrder() {
       }]
     : [];
 
-  const itemTotal = data.items.reduce((n, it) => n + it.price * it.quantity, 0);
+  const itemTotal = data.items.reduce((n, it) => n + Number(it.price) * it.quantity, 0);
 
   return (
     <div className="mx-auto max-w-2xl space-y-4 p-4">
@@ -114,7 +114,7 @@ export function TrackOrder() {
           {data.items.map((it, i) => (
             <li key={i} className="flex justify-between px-3 py-2 text-sm">
               <span>{it.name} × {it.quantity}</span>
-              <span>{(it.price * it.quantity).toFixed(2)}</span>
+              <span>{(Number(it.price) * it.quantity).toFixed(2)}</span>
             </li>
           ))}
           {data.items.length === 0 && <li className="px-3 py-3 text-sm text-slate-400">No items.</li>}
@@ -127,7 +127,7 @@ export function TrackOrder() {
   );
 }
 
-function Row({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
+function Row({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
   return (
     <div className="flex items-start gap-2">
       <span className="mt-0.5 text-slate-400">{icon}</span>
