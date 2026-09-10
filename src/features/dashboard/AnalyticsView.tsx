@@ -1,5 +1,4 @@
-
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useProfile } from '../../lib/hooks/useProfile';
 import { BranchSwitcher } from './BranchSwitcher';
@@ -41,8 +40,10 @@ export function AnalyticsView() {
     setSummary((data as Summary[])?.[0] ?? null);
   }
 
-  // Run once on mount.
-  useState(() => { void run(); });
+  useEffect(() => {
+    void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.role]);
 
   return (
     <section className="space-y-3">
@@ -76,8 +77,8 @@ export function AnalyticsView() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Stat label="Orders" value={summary.orders_count} />
           <Stat label="Deliveries completed" value={summary.deliveries_completed} />
-          <Stat label="Products value" value={summary.products_value.toFixed(2)} />
-          <Stat label="Dispatch cost" value={summary.dispatch_cost_total.toFixed(2)} />
+          <Stat label="Products value" value={Number(summary.products_value).toFixed(2)} />
+          <Stat label="Dispatch cost" value={Number(summary.dispatch_cost_total).toFixed(2)} />
         </div>
       )}
     </section>
