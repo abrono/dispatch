@@ -35,11 +35,21 @@ function ViewportReporter({ onViewportChange }: Pick<MapWrapperProps, 'onViewpor
   return null;
 }
 
+function Recenter({ lat, lng, zoom, follow }: { lat: number; lng: number; zoom: number; follow: boolean }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!follow) return;
+    map.setView([lat, lng], zoom, { animate: true });
+  }, [map, lat, lng, zoom, follow]);
+  return null;
+}
+
 export function LeafletMap({
-  center = { lat: 6.5244, lng: 3.3792 }, // Lagos fallback
+  center = { lat: 6.5244, lng: 3.3792 },
   zoom = 12,
   markers = [],
   className = 'h-96 w-full rounded-lg',
+  follow = true,
   onViewportChange,
 }: MapWrapperProps) {
   return (
@@ -48,6 +58,7 @@ export function LeafletMap({
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
+      <Recenter lat={center.lat} lng={center.lng} zoom={zoom} follow={follow} />
       <ViewportReporter onViewportChange={onViewportChange} />
       {markers.map((m) => (
         <Marker key={m.id} position={[m.lat, m.lng]} icon={pinIcon(m.tone)}>
