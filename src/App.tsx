@@ -3,24 +3,26 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useProfile } from './lib/hooks/useProfile';
 import { homeFor } from './lib/auth/roles';
 import { AppShell } from './components/AppShell';
+import { NotAuthorised } from './components/NotAuthorised';
 import { OrderComposer } from './features/orders/OrderComposer';
 import { DriverShift } from './features/driver/DriverShift';
 import { BranchDashboard } from './features/dashboard/BranchDashboard';
 import { MasterDashboard } from './features/dashboard/MasterDashboard';
 import { TrackOrder } from './features/tracking/TrackOrder';
 import { Login } from './features/auth/Login';
+import type { UserRole } from './lib/supabase';
 
 function Gate({
   children,
   allow,
 }: {
   children: React.ReactElement;
-  allow: string[];
+  allow: UserRole[];
 }) {
   const { profile, loading } = useProfile();
   if (loading) return <div className="p-6">Loading…</div>;
   if (!profile) return <Navigate to="/login" replace />;
-  if (!allow.includes(profile.role)) return <div className="p-6">Not authorised.</div>;
+  if (!allow.includes(profile.role)) return <NotAuthorised />;
   return children;
 }
 
@@ -38,21 +40,7 @@ export default function App() {
         {/* Public */}
         <Route path="/track/:tracking_code" element={<TrackOrder />} />
         <Route path="/login" element={<Login />} />
-import { NotAuthorised } from './components/NotAuthorised';
 
-function Gate({
-  children,
-  allow,
-}: {
-  children: React.ReactElement;
-  allow: string[];
-}) {
-  const { profile, loading } = useProfile();
-  if (loading) return <div className="p-6">Loading…</div>;
-  if (!profile) return <Navigate to="/login" replace />;
-  if (!allow.includes(profile.role)) return <NotAuthorised />;
-  return children;
-}
         {/* Staff — everything inside AppShell gets the nav bar */}
         <Route element={<AppShell />}>
           <Route
