@@ -38,7 +38,21 @@ export default function App() {
         {/* Public */}
         <Route path="/track/:tracking_code" element={<TrackOrder />} />
         <Route path="/login" element={<Login />} />
+import { NotAuthorised } from './components/NotAuthorised';
 
+function Gate({
+  children,
+  allow,
+}: {
+  children: React.ReactElement;
+  allow: string[];
+}) {
+  const { profile, loading } = useProfile();
+  if (loading) return <div className="p-6">Loading…</div>;
+  if (!profile) return <Navigate to="/login" replace />;
+  if (!allow.includes(profile.role)) return <NotAuthorised />;
+  return children;
+}
         {/* Staff — everything inside AppShell gets the nav bar */}
         <Route element={<AppShell />}>
           <Route
