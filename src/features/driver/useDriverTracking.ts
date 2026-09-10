@@ -96,8 +96,8 @@ export function useDriverTracking({ enabled }: Options) {
   const start = useCallback(async () => {
     if (watcherId.current) return;
 
-    const { status } = await Network.getStatus();
-    online.current = status === 'connected';
+    const { connected } = await Network.getStatus();
+    online.current = connected;
 
     if (Capacitor.isNativePlatform()) {
       const { BackgroundGeolocation } = await import('@capacitor-community/background-geolocation');
