@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useProfile } from '../../lib/hooks/useProfile';
 import { useRealtimeOrders } from '../../lib/realtime/useRealtimeOrders';
@@ -6,25 +5,14 @@ import { BranchSwitcher } from './BranchSwitcher';
 import { BranchDashboard } from './BranchDashboard';
 import { AnalyticsView } from './AnalyticsView';
 
-export function MasterDashboard() {
-  const { profile } = useProfile();
-  const [branchId, setBranchId] = useState<string | null>(null);
-  const { orders } = useRealtimeOrders(branchId);
-
-  // When a specific branch is chosen, delegate to the branch view so the
-  // master sees exactly what the branch staff see.
-  if (branchId) {
-    return (
-      <div>
-        <div className="p-4">
-          <BranchSwitcher value={branchId} onChange={setBranchId} />
-        </div>
-        <BranchDashboard />
-      </div>
-    );
-  }
-
-  if (profile?.role !== 'master') return null;
+function MasterGlobalView({
+  branchId,
+  setBranchId,
+}: {
+  branchId: string | null;
+  setBranchId: (id: string | null) => void;
+}) {
+  const { orders } = useRealtimeOrders(null);   // always "all branches" here
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-4">
@@ -40,18 +28,42 @@ export function MasterDashboard() {
             <li key={o.id} className="px-3 py-2 text-sm">
               <div className="flex items-center justify-between">
                 <span className="font-medium">{o.delivery_address}</span>
-                <span className="rounded bg-slate-100 px-2 py-0.5 text-xs uppercase">{o.status}</span>
+                <span className="rounded bg-slate-100 px-2 py-0.5 text-xs uppercase">
+                  {o.status}
+                </span>
               </div>
               <div className="mt-0.5 text-xs text-slate-500">
                 <code>{o.tracking_code}</code> · branch {o.branch_id.slice(0, 8)}
               </div>
             </li>
           ))}
-          {orders.length === 0 && <li className="px-3 py-6 text-center text-sm text-slate-400">No orders.</li>}
+          {orders.length === 0 && (
+            <li className="px-3 py-6 text-center text-sm text-slate-400">No orders.</li>
+          )}
         </ul>
       </section>
 
       <AnalyticsView />
     </div>
   );
+}
+
+export function MasterDashboard() {
+  const { profile } = useProfile();
+  const [branchId, setBranchId] = useState<string | null>(null);
+
+  if (profile?.role !== 'master') return null;
+
+  if (branchId) {
+    return (
+      <div>
+        <div className="p-4">
+          <BranchSwitcher value={branchId} onChange={setBranchId} />
+        </div>
+        <BranchDashboard />
+      </div>
+    );
+  }
+
+  return <MasterGlobalView branchId={branchId} setBranchId={setBranchId} />;
 }
