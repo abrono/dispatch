@@ -28,7 +28,15 @@ export function useProfile() {
       else { cached = data as Profile; setProfile(cached); }
       setLoading(false);
     }
-
+// src/components/Loading.tsx
+export function Loading({ label = 'Loading…' }: { label?: string }) {
+  return (
+    <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 text-sm text-slate-500">
+      <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+      {label}
+    </div>
+  );
+}
     load();
     const { data: sub } = supabase.auth.onAuthStateChange(() => load());
     return () => { cancelled = true; sub.subscription.unsubscribe(); };
