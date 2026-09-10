@@ -6,8 +6,8 @@ import { supabase } from '../../lib/supabase';
 import { haversineMeters } from '../../lib/geo';
 
 const QUEUE_KEY = 'logiflow.gps.queue.v1';
-const MIN_INTERVAL_MS = 15_000;   // time trigger
-const MIN_DISTANCE_M  = 20;       // distance trigger
+const MIN_INTERVAL_MS = 15_000;
+const MIN_DISTANCE_M  = 20;
 
 export interface QueuedFix {
   lat: number;
@@ -27,10 +27,10 @@ export function useDriverTracking({ enabled }: Options) {
   const [lastError, setLastError] = useState<string | null>(null);
 
   const lastSentFix = useRef<QueuedFix | null>(null);
-  const watcherId = useRef<string | null>(null);
+  // Native watcher stores a string id; web watcher stores a string callback id.
+  const watcherId = useRef<{ native: true; id: string } | { native: false; id: string } | null>(null);
   const online = useRef<boolean>(navigator.onLine);
 
-  // ---- queue persistence -------------------------------------------------
   const readQueue = useCallback(async (): Promise<QueuedFix[]> => {
     const { value } = await Preferences.get({ key: QUEUE_KEY });
     if (!value) return [];
@@ -42,11 +42,9 @@ export function useDriverTracking({ enabled }: Options) {
     setQueueSize(q.length);
   }, []);
 
-  // ---- single flush routine ---------------------------------------------
   const flush = useCallback(async () => {
     const q = await readQueue();
     if (q.length === 0) return;
-    // Keep only the newest fix — the RPC is an upsert of the latest position.
     const newest = q.reduce((a, b) => (a.ts > b.ts ? a : b));
 
     const { error } = await supabase.rpc('upsert_driver_location', {
@@ -55,19 +53,14 @@ export function useDriverTracking({ enabled }: Options) {
       p_accuracy: newest.accuracy,
     });
 
-    if (error) {
-      setLastError(error.message);
-      return; // keep queue intact
-    }
+    if (error) { setLastError(error.message); return; }
     await writeQueue([]);
     lastSentFix.current = newest;
     setLastSentAt(Date.now());
     setLastError(null);
   }, [readQueue, writeQueue]);
 
-  // ---- send-or-enqueue ---------------------------------------------------
   const handleFix = useCallback(async (fix: QueuedFix) => {
-    // Throttle: send if we have never sent, or if time/distance thresholds pass.
     const last = lastSentFix.current;
     const elapsed = last ? Date.now() - last.ts : Infinity;
     const moved = last ? haversineMeters(last, fix) : Infinity;
@@ -77,7 +70,7 @@ export function useDriverTracking({ enabled }: Options) {
     if (!online.current) {
       const q = await readQueue();
       q.push(fix);
-      await writeQueue(q); // retain for flush on reconnect
+      await writeQueue(q);
       return;
     }
 
@@ -100,7 +93,6 @@ export function useDriverTracking({ enabled }: Options) {
     setLastError(null);
   }, [readQueue, writeQueue]);
 
-  // ---- start / stop watcher ---------------------------------------------
   const start = useCallback(async () => {
     if (watcherId.current) return;
 
@@ -108,17 +100,14 @@ export function useDriverTracking({ enabled }: Options) {
     online.current = status === 'connected';
 
     if (Capacitor.isNativePlatform()) {
-      // Native foreground-service watcher — survives screen lock and app
-      // backgrounding. Must be imported lazily so the web build doesn't
-      // try to load the native module.
       const { BackgroundGeolocation } = await import('@capacitor-community/background-geolocation');
-      watcherId.current = await BackgroundGeolocation.addWatcher(
+      const id = await BackgroundGeolocation.addWatcher(
         {
           backgroundMessage: 'Tracking your delivery location',
           backgroundTitle: 'LogiFlow — On delivery',
           requestPermissions: true,
           stale: false,
-          distanceFilter: 10, // metres — pre-filter at the native layer
+          distanceFilter: 10,
         },
         (position, error) => {
           if (error) { setLastError(error.message); return; }
@@ -131,10 +120,8 @@ export function useDriverTracking({ enabled }: Options) {
           });
         },
       );
+      watcherId.current = { native: true, id };
     } else {
-      // Web fallback — Capacitor Geolocation watch. Note: browsers throttle
-      // background tabs; this is fine for testing but the native foreground
-      // service is the production path.
       const { Geolocation } = await import('@capacitor/geolocation');
       const id = await Geolocation.watchPosition(
         { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
@@ -149,27 +136,27 @@ export function useDriverTracking({ enabled }: Options) {
           });
         },
       );
-      watcherId.current = String(id);
+      watcherId.current = { native: false, id };
     }
 
     setIsTracking(true);
-    await flush(); // flush anything left over from a previous session
+    await flush();
   }, [handleFix, flush]);
 
   const stop = useCallback(async () => {
-    if (!watcherId.current) return;
-    if (Capacitor.isNativePlatform()) {
+    const w = watcherId.current;
+    if (!w) return;
+    if (w.native) {
       const { BackgroundGeolocation } = await import('@capacitor-community/background-geolocation');
-      await BackgroundGeolocation.removeWatcher({ id: watcherId.current });
+      await BackgroundGeolocation.removeWatcher({ id: w.id });
     } else {
       const { Geolocation } = await import('@capacitor/geolocation');
-      await Geolocation.clearWatch({ id: Number(watcherId.current) });
+      await Geolocation.clearWatch({ id: w.id });
     }
     watcherId.current = null;
     setIsTracking(false);
   }, []);
 
-  // ---- connectivity watchdog --------------------------------------------
   useEffect(() => {
     const sub = Network.addListener('networkStatusChange', (s) => {
       online.current = s.connected;
@@ -178,7 +165,6 @@ export function useDriverTracking({ enabled }: Options) {
     return () => { void sub.then((h) => h.remove()); };
   }, [enabled, flush]);
 
-  // Also respond to the browser's online event (covers the web build).
   useEffect(() => {
     const on = () => { online.current = true; void flush(); };
     const off = () => { online.current = false; };
@@ -190,14 +176,11 @@ export function useDriverTracking({ enabled }: Options) {
     };
   }, [flush]);
 
-  // Reflect persisted queue size on mount.
   useEffect(() => { void readQueue().then((q) => setQueueSize(q.length)); }, [readQueue]);
 
-  // Auto start/stop from the `enabled` flag.
   useEffect(() => {
     if (enabled && !watcherId.current) void start();
     if (!enabled && watcherId.current) void stop();
-    return () => { /* do not auto-stop on unmount; the shift owns lifecycle */ };
   }, [enabled, start, stop]);
 
   return { isTracking, queueSize, lastSentAt, lastError, start, stop, flush };
