@@ -1,9 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 import { Network } from '@capacitor/network';
 import { supabase } from '../../lib/supabase';
 import { haversineMeters } from '../../lib/geo';
+import type {
+  BackgroundGeolocationPlugin,
+  Location,
+  CallbackError,
+} from '@capacitor-community/background-geolocation';
+import type { Position } from '@capacitor/geolocation';
+
+const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation');
 
 const QUEUE_KEY = 'logiflow.gps.queue.v1';
 const MIN_INTERVAL_MS = 15_000;
@@ -100,7 +108,6 @@ export function useDriverTracking({ enabled }: Options) {
     online.current = connected;
 
     if (Capacitor.isNativePlatform()) {
-      const { BackgroundGeolocation } = await import('@capacitor-community/background-geolocation');
       const id = await BackgroundGeolocation.addWatcher(
         {
           backgroundMessage: 'Tracking your delivery location',
@@ -109,7 +116,7 @@ export function useDriverTracking({ enabled }: Options) {
           stale: false,
           distanceFilter: 10,
         },
-        (position, error) => {
+        (position?: Location, error?: CallbackError) => {
           if (error) { setLastError(error.message); return; }
           if (!position) return;
           void handleFix({
@@ -125,7 +132,7 @@ export function useDriverTracking({ enabled }: Options) {
       const { Geolocation } = await import('@capacitor/geolocation');
       const id = await Geolocation.watchPosition(
         { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
-        (pos, err) => {
+        (pos: Position | null, err?: any) => {
           if (err) { setLastError(err.message); return; }
           if (!pos) return;
           void handleFix({
@@ -147,7 +154,6 @@ export function useDriverTracking({ enabled }: Options) {
     const w = watcherId.current;
     if (!w) return;
     if (w.native) {
-      const { BackgroundGeolocation } = await import('@capacitor-community/background-geolocation');
       await BackgroundGeolocation.removeWatcher({ id: w.id });
     } else {
       const { Geolocation } = await import('@capacitor/geolocation');
