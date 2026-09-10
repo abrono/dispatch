@@ -1,15 +1,37 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import { useProfile } from '../../lib/hooks/useProfile';
 
 type Mode = 'password' | 'magic';
 
+function homeFor(role: string): string {
+  switch (role) {
+    case 'master':                return '/admin';
+    case 'branch_manager':
+    case 'fulfillment_officer':   return '/dashboard';
+    case 'driver':                return '/driver';
+    default:                      return '/login';
+  }
+}
+
 export function Login() {
+  const navigate = useNavigate();
+  const { profile, loading } = useProfile();
+
   const [mode, setMode] = useState<Mode>('password');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [sent, setSent] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Once a profile is available (after password sign-in OR returning from a
+  // magic-link click), bounce off /login to the right home for this role.
+  useEffect(() => {
+    if (loading || !profile) return;
+    navigate(homeFor(profile.role), { replace: true });
+  }, [loading, profile, navigate]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -25,18 +47,15 @@ export function Login() {
       });
       setBusy(false);
       if (error) setErr(error.message);
-      // onAuthStateChange / your router handles the redirect on success
+      // success → useProfile picks up the new session, effect above navigates
       return;
     }
 
-    // Magic link flow
     const { error } = await supabase.auth.signInWithOtp({
       email: normalizedEmail,
       options: {
-        // Staff are invite-only. shouldCreateUser: false means an email
-        // that has no auth.users row will not silently create one.
         shouldCreateUser: false,
-        emailRedirectTo: window.location.origin + '/dashboard',
+        emailRedirectTo: window.location.origin + '/login',
       },
     });
     setBusy(false);
@@ -49,6 +68,8 @@ export function Login() {
     setErr(null);
     setSent(false);
   }
+
+  if (loading) return <div className="p-6 text-sm text-slate-500">Loading…</div>;
 
   return (
     <form onSubmit={submit} className="mx-auto mt-24 max-w-sm space-y-3 p-4">
