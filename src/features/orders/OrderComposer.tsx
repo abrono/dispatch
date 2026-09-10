@@ -39,6 +39,7 @@ export function OrderComposer({ onCreated }: { onCreated?: (orderId: string) => 
 
   async function submit() {
     setErr(null);
+    if (!profile) return null;
     if (!customer) return setErr('Select or create a customer first.');
     if (items.length === 0) return setErr('Add at least one product.');
     if (!deliveryAddress.trim()) return setErr('Delivery address is required.');
