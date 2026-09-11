@@ -48,7 +48,7 @@ export function OrderComposer({ onCreated }: { onCreated?: (orderId: string) => 
 
     // Single atomic RPC. Prices are read from products server-side; the
     // client only sends product_id + quantity.
-    const { data, error } = await supabase.rpc('create_order_with_items', {
+    const payload = {
       p_customer_id: customer.id,
       p_delivery_address: deliveryAddress.trim(),
       p_dispatch_cost: dispatchCost ? Number(dispatchCost) : null,
@@ -58,11 +58,27 @@ export function OrderComposer({ onCreated }: { onCreated?: (orderId: string) => 
         quantity: li.quantity,
       })),
       p_branch_id: profile.role === 'master' ? branchId : null,
-    });
+    };
+
+    console.log('RPC payload being sent:', payload);
+
+    const { data, error } = await supabase.rpc('create_order_with_items', payload);
 
     setSaving(false);
 
-    if (error) { return setErr(error.message); }
+    if (error) {
+      // Log everything PostgREST gives us so we can see exactly what failed.
+      console.error('RPC error', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      });
+      return setErr(
+        `${error.message}${error.hint ? ' — ' + error.hint : ''}${error.code ? ' [' + error.code + ']' : ''}`,
+      );
+    }
+
     const row = Array.isArray(data) ? data[0] : data;
     if (!row?.id) return setErr('Order creation returned no id');
 
