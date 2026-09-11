@@ -11,7 +11,7 @@ const TONE_COLORS: Record<NonNullable<MapMarker['tone']>, string> = {
   warning: '#d97706',
 };
 
-function pinIcon(tone: MapMarker['tone'] = 'primary') {
+function makePinIcon(tone: NonNullable<MapMarker['tone']> = 'primary') {
   const color = TONE_COLORS[tone];
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36">
@@ -20,6 +20,14 @@ function pinIcon(tone: MapMarker['tone'] = 'primary') {
     </svg>`;
   return L.divIcon({ html: svg, className: '', iconSize: [28, 36], iconAnchor: [14, 36] });
 }
+
+// Build each icon once, at module load, so every Marker reuses the same instance.
+const ICONS: Record<NonNullable<MapMarker['tone']>, L.DivIcon> = {
+  primary: makePinIcon('primary'),
+  muted:   makePinIcon('muted'),
+  success: makePinIcon('success'),
+  warning: makePinIcon('warning'),
+};
 
 function ViewportReporter({ onViewportChange }: Pick<MapWrapperProps, 'onViewportChange'>) {
   const map = useMap();
@@ -60,11 +68,18 @@ export function LeafletMap({
       />
       <Recenter lat={center.lat} lng={center.lng} zoom={zoom} follow={follow} />
       <ViewportReporter onViewportChange={onViewportChange} />
-      {markers.map((m) => (
-        <Marker key={m.id} position={[m.lat, m.lng]} icon={pinIcon(m.tone)}>
-          {m.label && <Popup>{m.label}</Popup>}
-        </Marker>
-      ))}
+      {markers.map((m) => {
+        const tone = m.tone ?? 'primary';
+        return (
+          <Marker
+            key={`${m.id}-${m.lat}-${m.lng}`}
+            position={[m.lat, m.lng]}
+            icon={ICONS[tone]}
+          >
+            {m.label && <Popup>{m.label}</Popup>}
+          </Marker>
+        );
+      })}
     </MapContainer>
   );
 }
