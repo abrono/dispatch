@@ -44,9 +44,12 @@ jobs:
       - name: Build web app
         run: npm run build
 
-      - name: Add Android platform (first run only)
+      - name: Ensure Android platform exists
         run: |
-          if [ ! -d "android" ]; then npx cap add android; fi
+          if [ ! -f "android/gradlew" ]; then
+            rm -rf android
+            npx cap add android
+          fi
 
       - name: Sync Capacitor
         run: npx cap sync android
