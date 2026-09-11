@@ -1,17 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 import { Network } from '@capacitor/network';
+import { BackgroundGeolocation } from '@capacitor-community/background-geolocation';
+import type { Location, CallbackError } from '@capacitor-community/background-geolocation';
 import { supabase } from '../../lib/supabase';
 import { haversineMeters } from '../../lib/geo';
-import type {
-  BackgroundGeolocationPlugin,
-  Location,
-  CallbackError,
-} from '@capacitor-community/background-geolocation';
 import type { Position } from '@capacitor/geolocation';
-
-const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation');
 
 const QUEUE_KEY = 'logiflow.gps.queue.v1';
 const MIN_INTERVAL_MS = 15_000;
@@ -35,9 +30,11 @@ export function useDriverTracking({ enabled }: Options) {
   const [lastError, setLastError] = useState<string | null>(null);
 
   const lastSentFix = useRef<QueuedFix | null>(null);
-  // Native watcher stores a string id; web watcher stores a string callback id.
   const watcherId = useRef<{ native: true; id: string } | { native: false; id: string } | null>(null);
   const online = useRef<boolean>(navigator.onLine);
+  
+  // Mutex lock to prevent race conditions when writing to the queue
+  const queueLock = useRef<Promise<void>>(Promise.resolve());
 
   const readQueue = useCallback(async (): Promise<QueuedFix[]> => {
     const { value } = await Preferences.get({ key: QUEUE_KEY });
@@ -50,7 +47,19 @@ export function useDriverTracking({ enabled }: Options) {
     setQueueSize(q.length);
   }, []);
 
+  // Safe enqueue that uses the mutex
+  const enqueueFix = useCallback(async (fix: QueuedFix) => {
+    queueLock.current = queueLock.current.then(async () => {
+      const q = await readQueue();
+      q.push(fix);
+      await writeQueue(q);
+    });
+    return queueLock.current;
+  }, [readQueue, writeQueue]);
+
   const flush = useCallback(async () => {
+    // Wait for any pending writes to finish
+    await queueLock.current;
     const q = await readQueue();
     if (q.length === 0) return;
     const newest = q.reduce((a, b) => (a.ts > b.ts ? a : b));
@@ -76,9 +85,7 @@ export function useDriverTracking({ enabled }: Options) {
     if (!shouldSend) return;
 
     if (!online.current) {
-      const q = await readQueue();
-      q.push(fix);
-      await writeQueue(q);
+      await enqueueFix(fix);
       return;
     }
 
@@ -89,9 +96,7 @@ export function useDriverTracking({ enabled }: Options) {
     });
 
     if (error) {
-      const q = await readQueue();
-      q.push(fix);
-      await writeQueue(q);
+      await enqueueFix(fix);
       setLastError(error.message);
       return;
     }
@@ -99,7 +104,7 @@ export function useDriverTracking({ enabled }: Options) {
     lastSentFix.current = fix;
     setLastSentAt(Date.now());
     setLastError(null);
-  }, [readQueue, writeQueue]);
+  }, [enqueueFix]);
 
   const start = useCallback(async () => {
     if (watcherId.current) return;
@@ -132,7 +137,7 @@ export function useDriverTracking({ enabled }: Options) {
       const { Geolocation } = await import('@capacitor/geolocation');
       const id = await Geolocation.watchPosition(
         { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
-        (pos: Position | null, err?: any) => {
+        (pos: Position | null, err?: CallbackError) => {
           if (err) { setLastError(err.message); return; }
           if (!pos) return;
           void handleFix({
