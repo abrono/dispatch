@@ -1,12 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 import { Network } from '@capacitor/network';
-import { BackgroundGeolocation } from '@capacitor-community/background-geolocation';
-import type { Location, CallbackError } from '@capacitor-community/background-geolocation';
+import type {
+  BackgroundGeolocationPlugin,
+  Location,
+  CallbackError,
+} from '@capacitor-community/background-geolocation';
 import { supabase } from '../../lib/supabase';
 import { haversineMeters } from '../../lib/geo';
 import type { Position } from '@capacitor/geolocation';
+
+const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation');
 
 const QUEUE_KEY = 'logiflow.gps.queue.v1';
 const MIN_INTERVAL_MS = 15_000;
